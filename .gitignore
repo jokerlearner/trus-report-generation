@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# 虚拟环境
+.venv/
+venv/
+env/
+.conda/
+
+# 处理后数据（体积大，每次重新生成）
+processed/
+output/
+
+# 模型权重（从 HuggingFace 下载，不上传）
+models/
+checkpoints/
+*.bin
+*.safetensors
+*.pth
+*.pt
+!requirements.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/
+
+# 环境变量
+.env
+.env.local
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# DeepSpeed
+deepspeed_config.json
+
+# Claude Code
+.claude/
+
+# 本地指令
+指令.txt
