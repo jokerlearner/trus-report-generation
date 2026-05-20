@@ -11,7 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import TRAIN_JSON_PATH, VAL_JSON_PATH, TEST_JSON_PATH, PROCESSED_DIR
 
 # ms-swift 注册数据集
-from swift.llm import DatasetMeta, register_dataset, MessagesPreprocessor
+from swift.dataset import DatasetMeta, register_dataset
+from swift.dataset.preprocessor.core import MessagesPreprocessor
 
 
 class TRUSPreprocessor(MessagesPreprocessor):
@@ -42,21 +43,21 @@ class TRUSPreprocessor(MessagesPreprocessor):
 
 # 注册训练集
 register_dataset(DatasetMeta(
-    ms_dataset_id=str(TRAIN_JSON_PATH),
+    dataset_path=str(TRAIN_JSON_PATH),
     dataset_name="trus_train",
     preprocess_func=TRUSPreprocessor(),
 ))
 
 # 注册验证集
 register_dataset(DatasetMeta(
-    ms_dataset_id=str(VAL_JSON_PATH),
+    dataset_path=str(VAL_JSON_PATH),
     dataset_name="trus_val",
     preprocess_func=TRUSPreprocessor(),
 ))
 
 # 注册测试集
 register_dataset(DatasetMeta(
-    ms_dataset_id=str(TEST_JSON_PATH),
+    dataset_path=str(TEST_JSON_PATH),
     dataset_name="trus_test",
     preprocess_func=TRUSPreprocessor(),
 ))

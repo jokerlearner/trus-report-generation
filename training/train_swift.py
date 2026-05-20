@@ -16,14 +16,14 @@ from config import (
 # 注册 TRUS 数据集到 ms-swift
 import training.dataset_register  # noqa: F401 — dataset registration side-effect
 
-from swift.llm import sft_main, TrainArguments
+from swift import sft_main, SftArguments
 
 
 def build_args():
     cfg = TRAINING_CONFIG
     model_path = str(MODEL_LOCAL_PATH) if MODEL_LOCAL_PATH else MODEL_NAME
 
-    return TrainArguments(
+    return SftArguments(
         # ==================== 模型 ====================
         model=model_path,
         model_type="qwen2_5_vl",
@@ -36,7 +36,7 @@ def build_args():
         load_from_cache_file=True,
 
         # ==================== 训练类型 ====================
-        train_type="lora",
+        tuner_type="lora",
         lora_rank=cfg["lora_rank"],
         lora_alpha=cfg["lora_alpha"],
         lora_dropout=cfg["lora_dropout"],
@@ -47,12 +47,11 @@ def build_args():
 
         # ==================== 量化 ====================
         quant_method="bnb",
+        quant_bits=4,
         bnb_4bit_compute_dtype=cfg["bnb_4bit_compute_dtype"],
         bnb_4bit_quant_type=cfg["bnb_4bit_quant_type"],
         bnb_4bit_use_double_quant=cfg["bnb_4bit_use_double_quant"],
-        load_in_4bit=cfg["load_in_4bit"],
-
-        # ==================== 训练循环 ====================
+                # ==================== 训练循环 ====================
         num_train_epochs=cfg["num_train_epochs"],
         per_device_train_batch_size=cfg["per_device_train_batch_size"],
         per_device_eval_batch_size=cfg["per_device_eval_batch_size"],
