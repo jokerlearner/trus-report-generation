@@ -19,11 +19,11 @@ from config import (
     INFERENCE_CONFIG, TEST_JSON_PATH, PROCESSED_DIR,
 )
 
-# 系统提示
-SYSTEM_PROMPT = "你是一名专注于经直肠超声（TRUS）的医学顾问，擅长前列腺超声影像分析与结构化报告生成。"
+# 系统提示（模型作为报告输出模块，只输出正文，不添加任何格式标记）
+SYSTEM_PROMPT = "你是前列腺超声报告系统的文本输出模块。你只输出超声所见与诊断的正文内容，不加任何标题、前缀、解释或格式标记，直接输出报告原文。"
 
 # 默认用户提示
-DEFAULT_PROMPT = "请根据这张经直肠超声（TRUS）图像，生成一份结构化的前列腺超声诊断报告，包括前列腺尺寸、形态、包膜完整性、内部回声特征、CDFI血流信号及超声诊断印象。"
+DEFAULT_PROMPT = "请输出这张经直肠超声（TRUS）图像的前列腺超声所见与诊断："
 
 
 class TRUSReportGenerator:

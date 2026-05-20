@@ -65,8 +65,8 @@ TRAINING_CONFIG = {
     "bnb_4bit_use_double_quant": True,
 
     # LoRA
-    "lora_rank": 8,
-    "lora_alpha": 16,
+    "lora_rank": 32,
+    "lora_alpha": 64,
     "lora_dropout": 0.05,
     "lora_target_modules": "all-linear",
 
@@ -74,7 +74,7 @@ TRAINING_CONFIG = {
     "per_device_train_batch_size": 1,
     "per_device_eval_batch_size": 1,
     "gradient_accumulation_steps": 8,
-    "num_train_epochs": 3,
+    "num_train_epochs": 10,
     "learning_rate": 2e-4,
     "warmup_ratio": 0.05,
     "lr_scheduler_type": "cosine",
@@ -87,7 +87,7 @@ TRAINING_CONFIG = {
 
     # 序列长度
     "max_length": 4096,
-    "max_pixels": 112896,  # 336×336
+    "max_pixels": 401408,  # 634×634
 
     # 检查点
     "save_steps": 100,
