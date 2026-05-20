@@ -11,8 +11,9 @@ echo "============================================"
 export MAX_PIXELS=112896
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export LD_LIBRARY_PATH=/opt/conda/lib/python3.12/site-packages/nvidia/cu13/lib:$LD_LIBRARY_PATH
 
-python3 -m training.train_swift
+/opt/conda/bin/python3 -m training.train_swift
 if [ $? -ne 0 ]; then
     echo "[错误] 训练失败，请检查错误信息。"
     exit 1

@@ -154,38 +154,183 @@ def _pick_prompts(image_count: int, samples_per_image: int = 5) -> List[str]:
     return prompts
 
 
-# 诊断结论的多种自然变体（用于数据增强）
-DIAGNOSIS_VARIANTS = [
-    "前列腺增大伴钙化 前列腺穿刺活检，待病理",
-    "前列腺增大伴钙化灶 已行穿刺活检，等待病理结果",
-    "前列腺增生伴钙化 前列腺穿刺术后，病理待回报",
-    "前列腺增大，内见钙化 已行前列腺穿刺活检，待病理回报",
-    "前列腺增生并钙化 穿刺活检已做，待病理结果",
-    "前列腺增大伴钙化 建议结合病理结果综合评估",
-    "前列腺增生伴钙化灶形成 穿刺活检后待病理确认",
-]
+# ======================== 影像特征 → 差异化诊断结论 ========================
 
-def _augment_report_text(report: str, pathology_info: dict) -> List[str]:
-    """为同一份报告生成多个措辞变体，增加训练数据文本多样性。"""
+def _extract_image_features(report_text: str) -> dict:
+    """从TRUS报告文本中提取可区分的影像特征。"""
+    features = {
+        "has_hypoechoic": False,
+        "hypoechoic_location": "",
+        "has_cyst": False,
+        "has_nodule": False,
+        "has_peripheral_zone_abnormal": False,
+        "capsule_incomplete": False,
+        "calcification_type": "点状",
+        "has_calcification": True,
+    }
+    # 低回声区/灶（最需关注的特征）
+    if re.search(r'低回声', report_text):
+        features["has_hypoechoic"] = True
+        # 提取解剖位置（不包含"低回声"本身，模板会补上）
+        side = ""
+        zone = ""
+        if m := re.search(r'右侧|右叶', report_text):
+            side = m.group(0)
+        elif re.search(r'左侧|左叶', report_text):
+            side = "左侧"
+        if re.search(r'外周带', report_text):
+            zone = "外周带"
+        elif re.search(r'移行带', report_text):
+            zone = "移行带"
+        features["hypoechoic_location"] = (side + zone) if (side or zone) else ""
+    # 囊肿/无回声
+    if re.search(r'囊肿|无回声[区灶]', report_text):
+        features["has_cyst"] = True
+    # 结节
+    if re.search(r'结节', report_text):
+        features["has_nodule"] = True
+    # 外周带异常
+    if re.search(r'外周带', report_text):
+        features["has_peripheral_zone_abnormal"] = True
+    # 包膜
+    if re.search(r'包膜不完整|包膜欠完整|包膜中断|包膜不光', report_text):
+        features["capsule_incomplete"] = True
+    # 钙化类型
+    if '团状强回声' in report_text:
+        features["calcification_type"] = "团状"
+    elif '点状强回声' in report_text:
+        features["calcification_type"] = "点状"
+    elif '强回声' not in report_text and '钙化' not in report_text:
+        features["has_calcification"] = False
+        features["calcification_type"] = "无"
+    return features
+
+
+def _get_psa_level(psa) -> str:
+    """PSA风险分层。"""
+    if psa is None:
+        return "unknown"
+    if psa < 4:
+        return "low"
+    if psa < 10:
+        return "intermediate"
+    if psa < 20:
+        return "high"
+    return "very_high"
+
+
+def _generate_differentiated_conclusion(features: dict, psa=None, variant_idx: int = 0) -> str:
+    """根据影像特征 + PSA联合生成差异化诊断结论。variant_idx控制措辞变体。"""
+    psa_level = _get_psa_level(psa)
+    psa_mod = {"low": "", "intermediate": "PSA轻度升高，", "high": "PSA显著升高，",
+                "very_high": "PSA明显升高，", "unknown": ""}[psa_level]
+
+    # --- 优先级1：低回声 → 恶性风险最高 ---
+    if features["has_hypoechoic"]:
+        loc = features["hypoechoic_location"]
+        loc_text = (loc + "见") if loc else "局部见"
+        tmpl = [
+            f"前列腺增大伴钙化，{psa_mod}{loc_text}低回声区，建议靶向穿刺活检",
+            f"前列腺增生伴钙化，{psa_mod}{loc_text}低回声，不排除恶性可能，建议穿刺",
+            f"前列腺增大，{psa_mod}{loc_text}低回声灶，建议穿刺活检明确诊断",
+        ]
+        return tmpl[variant_idx % len(tmpl)]
+
+    # --- 优先级2：外周带异常 ---
+    if features["has_peripheral_zone_abnormal"]:
+        tmpl = [
+            f"前列腺增大伴钙化，{psa_mod}外周带异常回声区，建议进一步检查",
+            f"前列腺增生伴钙化，外周带回声异常，{psa_mod}建议靶向穿刺",
+            f"前列腺增大，外周带见异常信号，{psa_mod}建议穿刺活检",
+        ]
+        return tmpl[variant_idx % len(tmpl)]
+
+    # --- 优先级3：结节 ---
+    if features["has_nodule"]:
+        tmpl = [
+            f"前列腺增大伴钙化，{psa_mod}前列腺结节，建议穿刺活检",
+            f"前列腺增生，内见结节样改变，{psa_mod}建议进一步检查明确性质",
+            f"前列腺增大伴钙化及结节形成，{psa_mod}建议穿刺活检",
+        ]
+        return tmpl[variant_idx % len(tmpl)]
+
+    # --- 优先级4：包膜不完整 ---
+    if features["capsule_incomplete"]:
+        tmpl = [
+            f"前列腺增大伴钙化，包膜局部不完整，{psa_mod}建议穿刺活检",
+            f"前列腺增生，包膜不完整，{psa_mod}不排除恶性可能，建议穿刺",
+        ]
+        return tmpl[variant_idx % len(tmpl)]
+
+    # --- 优先级5：囊肿 → 良性倾向 ---
+    if features["has_cyst"]:
+        tmpl = [
+            f"前列腺增大伴钙化，内见无回声区（囊肿可能），{psa_mod}建议定期随访",
+            f"前列腺增生伴钙化，囊肿形成，{psa_mod}建议年度复查",
+            f"前列腺增大，前列腺囊肿，{psa_mod}建议随访观察",
+        ]
+        return tmpl[variant_idx % len(tmpl)]
+
+    # --- 优先级6：仅钙化+增大 → 随访为主，PSA高则加急 ---
+    if features["has_calcification"]:
+        if psa_level in ("high", "very_high"):
+            tmpl = [
+                f"前列腺增生伴钙化，{psa_mod}建议穿刺活检排除恶性",
+                f"前列腺增大伴钙化，{psa_mod}强烈建议穿刺活检",
+            ]
+        else:
+            tmpl = [
+                f"前列腺增生伴钙化，{psa_mod}未见明确占位性病变，建议定期随访PSA",
+                f"前列腺增大伴钙化，{psa_mod}建议结合临床定期复查",
+                f"前列腺增生伴钙化灶，{psa_mod}建议年度随访",
+            ]
+        return tmpl[variant_idx % len(tmpl)]
+
+    # --- 默认 ---
+    tmpl = [
+        f"前列腺增大，{psa_mod}建议结合临床综合评估",
+        f"前列腺增生，{psa_mod}建议定期随访",
+    ]
+    return tmpl[variant_idx % len(tmpl)]
+
+
+def _augment_report_text(report: str, pathology_info: dict, psa=None) -> List[str]:
+    """为同一份报告生成基于影像特征差异化的诊断结论变体。"""
     import random
-    random.seed(42)
-    variants = [report]  # 原始版本
 
-    # 1. 诊断结论变体：替换最后一句为随机变体
+    features = _extract_image_features(report)
+    variants = []
+
+    # 找到原始报告"所见"部分和"结论"部分的分界
     endings = ["。", "；", ";"]
     last_end = -1
     for end_char in endings:
         pos = report.rfind(end_char)
         if pos > last_end:
             last_end = pos
-    if last_end > len(report) * 0.6:  # 最后一句在后60%位置
-        base = report[:last_end]
-        for _ in range(2):  # 生成2个诊断变体
-            new_ending = random.choice(DIAGNOSIS_VARIANTS)
-            if new_ending != report[last_end+1:].strip():
-                variants.append(base + "。" + new_ending)
 
-    # 2. 癌症病例：增加包含病理发现的版本
+    if last_end > len(report) * 0.6:
+        base = report[:last_end + 1]  # 保留句号
+    else:
+        base = report
+
+    # 生成3个不同措辞的结论变体
+    for vi in range(3):
+        new_conclusion = _generate_differentiated_conclusion(features, psa, variant_idx=vi)
+        variant = base + new_conclusion
+        if variant != report:
+            variants.append(variant)
+
+    # 去重后最多保留
+    seen = set()
+    unique = []
+    for v in variants:
+        if v not in seen:
+            seen.add(v)
+            unique.append(v)
+    variants = unique[:3]
+
+    # 癌症病例：额外追加病理确认版本（保持医学术语覆盖）
     if pathology_info.get("has_cancer"):
         gleason = pathology_info.get("gleason_score", "")
         isup = pathology_info.get("isup_grade", "")
@@ -193,13 +338,12 @@ def _augment_report_text(report: str, pathology_info: dict) -> List[str]:
             path_add = f"。病理补充：前列腺腺泡腺癌，Gleason评分{gleason}"
             if isup:
                 path_add += f"，ISUP分级{isup}级组"
-            variants.append(report + path_add)
+            variants.append(base + path_add)
     else:
-        # 良性病例偶尔也加病理确认
         if random.random() < 0.3:
-            variants.append(report + "。病理补充：良性前列腺组织")
+            variants.append(base + "。病理补充：良性前列腺组织")
 
-    return variants[:4]  # 最多4个变体
+    return variants[:4]
 
 
 def build_training_data(
@@ -258,7 +402,7 @@ def build_training_data(
             stats["total_images"] += 1
 
             prompts = _pick_prompts(len(images), samples_per_image=5)
-            report_variants = _augment_report_text(trus_report_text, pathology_info)
+            report_variants = _augment_report_text(trus_report_text, pathology_info, psa)
 
             for pi, prompt in enumerate(prompts):
                 # 每个prompt配不同的report变体
