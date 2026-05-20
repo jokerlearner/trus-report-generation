@@ -78,7 +78,10 @@ def evaluate_nlg(predictions: List[str], references: List[str]) -> Dict[str, flo
         for k, v in compute_bleu(ref, pred).items():
             bleu_scores[k].append(v)
         rouge_scores.append(compute_rouge_l(ref, pred))
-        meteor_scores.append(compute_meteor(ref, pred))
+        try:
+            meteor_scores.append(compute_meteor(ref, pred))
+        except Exception:
+            pass
 
     for k, v in bleu_scores.items():
         results[k] = np.mean(v)

@@ -160,7 +160,16 @@ def build_training_data(
             stats["with_cancer"] += 1
 
         psa_val = row.get(EXCEL_COLUMNS["psa"], None)
-        psa = float(psa_val) if pd.notna(psa_val) else None
+        psa = None
+        if pd.notna(psa_val):
+            psa_str = str(psa_val)
+            # Extract first TPSA value: "总前列腺特异性抗原 20.929 ↑ng/mL"
+            tpsa_match = re.search(r"总前列腺特异性抗原\s*([\d.]+)", psa_str)
+            if tpsa_match:
+                try:
+                    psa = float(tpsa_match.group(1))
+                except ValueError:
+                    pass
 
         structured = parse_trus_report(trus_report_text)
 

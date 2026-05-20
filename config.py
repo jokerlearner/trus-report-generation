@@ -45,7 +45,7 @@ EXCEL_COLUMNS = {
     "穿刺结果1": "穿刺结果1",
     "穿刺结果2": "穿刺结果2",
     "经腹部超声报告": "经腹部超声影像报告",
-    "trus_report": "经直肠超声影像报告(TRUS)",
+    "trus_report": "经直肠超声影像报告",
     "mri_report": "MRI影像报告",
     "psa": "PSA值",
 }
@@ -81,7 +81,7 @@ TRAINING_CONFIG = {
 
     # 精度与计算
     "torch_dtype": "bfloat16",
-    "attn_implementation": "flash_attention_2",
+    "attn_implementation": "sdpa",
     "gradient_checkpointing": True,
     "tf32": True,  # Ampere+ 架构
 
