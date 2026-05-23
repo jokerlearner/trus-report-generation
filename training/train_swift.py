@@ -73,12 +73,15 @@ def build_args():
         max_pixels=cfg["max_pixels"],
         truncation_strategy="right",
 
-        # ==================== 检查点 ====================
+        # ==================== 检查点 + 早停 ====================
         save_steps=cfg["save_steps"],
         save_total_limit=cfg["save_total_limit"],
         eval_steps=cfg["eval_steps"],
         logging_steps=cfg["logging_steps"],
         save_only_model=True,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
 
         # ==================== 输出 ====================
         output_dir=str(OUTPUT_DIR / "trus_lora"),
@@ -102,6 +105,10 @@ def build_args():
         eval_strategy="steps",
         save_strategy="steps",
         ddp_timeout=1800,
+
+        # ==================== CLOVER 扩展 ====================
+        external_plugins=[str(Path(__file__).resolve().parent / "clover_plugin.py")],
+        loss_type="clover",
     )
 
 

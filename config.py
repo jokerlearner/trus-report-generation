@@ -64,19 +64,19 @@ TRAINING_CONFIG = {
     "bnb_4bit_compute_dtype": "bfloat16",
     "bnb_4bit_use_double_quant": True,
 
-    # LoRA
-    "lora_rank": 32,
-    "lora_alpha": 64,
-    "lora_dropout": 0.05,
+    # LoRA (降低容量防过拟合)
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.2,
     "lora_target_modules": "all-linear",
 
     # 训练循环
     "per_device_train_batch_size": 1,
     "per_device_eval_batch_size": 1,
     "gradient_accumulation_steps": 8,
-    "num_train_epochs": 10,
-    "learning_rate": 2e-4,
-    "warmup_ratio": 0.05,
+    "num_train_epochs": 1,
+    "learning_rate": 1e-4,
+    "warmup_ratio": 0.1,
     "lr_scheduler_type": "cosine",
 
     # 精度与计算
@@ -89,8 +89,8 @@ TRAINING_CONFIG = {
     "max_length": 4096,
     "max_pixels": 401408,  # 634×634
 
-    # 检查点
-    "save_steps": 100,
+    # 检查点 + 早停
+    "save_steps": 50,
     "save_total_limit": 3,
     "eval_steps": 50,
     "logging_steps": 5,
@@ -100,9 +100,9 @@ TRAINING_CONFIG = {
     "dataloader_persistent_workers": False,
     "torch_empty_cache_steps": 50,
 
-    # 损失与正则
-    "neftune_noise_alpha": 5.0,
-    "weight_decay": 0.01,
+    # 损失与正则 (强力防过拟合)
+    "neftune_noise_alpha": 10.0,
+    "weight_decay": 0.05,
 }
 
 # ======================== 推理配置 ========================
@@ -111,6 +111,38 @@ INFERENCE_CONFIG = {
     "temperature": 0.1,
     "do_sample": True,
     "top_p": 0.9,
+}
+
+# ======================== CLOVER 架构配置 ========================
+CLOVER_CONFIG = {
+    # 损失权重 (适度降低辅助损失权重防过拟合)
+    "lambda_cls": 0.2,              # 0.3 → 0.2
+    "lambda_contrast": 0.1,         # 0.15 → 0.1
+
+    # Warmup (延长warmup让模型先学好LM再引入辅助任务)
+    "cls_warmup_steps": 80,         # 50 → 80
+    "contrast_warmup_steps": 150,   # 100 → 150
+
+    # 温度参数
+    "temperature_init": 0.5,        # InfoNCE 初始温度
+    "temperature_min": 0.1,         # InfoNCE 最低温度 (cosine 退火)
+
+    # 防过拟合 (全面增强)
+    "label_smoothing": 0.15,        # BCE 标签平滑 0.1 → 0.15
+    "clinical_dropout": 0.2,        # ClinicalMLP/Heads dropout 0.1 → 0.2
+    "feature_mask_prob": 0.2,       # 随机遮蔽临床特征 0.05 → 0.2
+
+    # 维度
+    "projection_dim": 256,          # 对比投影空间维度
+    "clinical_mlp_hidden": 64,      # ClinicalMLP 隐藏层维度
+
+    # Multi-Crop
+    "local_crop_ratio": 0.6,        # 局部视图的中心裁剪比例
+    "local_crop_size": 256,         # 局部视图 resize 大小
+
+    # MoCo 对比队列 (增大队列提供更多负样本)
+    "moco_queue_size": 64,          # 32 → 64
+    "moco_momentum": 0.999,         # 队列动量更新系数
 }
 
 # ======================== 确保目录存在 ========================

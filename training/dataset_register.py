@@ -38,6 +38,12 @@ class TRUSPreprocessor(MessagesPreprocessor):
             })
             row["messages"] = messages
 
+        # --- CLOVER: 将临床特征从 metadata 提升到顶层字段 ---
+        # 配合 remove_unused_columns=False，这些字段会被保留在训练 batch 中
+        metadata = row.get("metadata", {})
+        for key in ["has_cancer", "psa", "volume"]:
+            row[key] = metadata.get(key)
+
         return super().preprocess(row)
 
 

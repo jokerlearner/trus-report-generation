@@ -16,10 +16,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import (
     EXCEL_PATH, PROCESSED_DIR, IMAGE_DIR, FULL_JSON_PATH, EXCEL_COLUMNS,
-    TRAIN_JSON_PATH, VAL_JSON_PATH, TEST_JSON_PATH,
+    TRAIN_JSON_PATH, VAL_JSON_PATH, TEST_JSON_PATH, CLOVER_CONFIG,
 )
 from data.report_parser import parse_trus_report, clean_report_text
 from data.pathology_labeler import parse_pathology
+from data.crop_utils import generate_local_crop, get_crop_rel_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -152,6 +153,36 @@ def _pick_prompts(image_count: int, samples_per_image: int = 5) -> List[str]:
         cat = random.choice(categories)
         prompts.append(random.choice(REPORT_PROMPTS[cat]))
     return prompts
+
+
+# ======================== CLOVER: 临床参数辅助函数 ========================
+
+def _compute_volume(dimensions: dict) -> Optional[float]:
+    """前列腺体积估算（椭球公式）：V = 0.52 × LR × AP × SI / 1000 (mL)。"""
+    lr = dimensions.get("lr_diameter")
+    ap = dimensions.get("ap_diameter")
+    si = dimensions.get("si_diameter")
+    if all(v is not None for v in [lr, ap, si]):
+        return 0.52 * lr * ap * si / 1000.0
+    return None
+
+
+def _build_clinical_prefix(psa: Optional[float], dimensions: dict, volume: Optional[float]) -> str:
+    """构建结构化临床参数前缀字符串。"""
+    parts = []
+    if psa is not None:
+        parts.append(f"PSA={psa:.2f}ng/mL")
+    if volume is not None and volume > 0:
+        parts.append(f"体积={volume:.1f}mL")
+    if dimensions:
+        lr = dimensions.get("lr_diameter")
+        ap = dimensions.get("ap_diameter")
+        si = dimensions.get("si_diameter")
+        if all(v is not None for v in [lr, ap, si]):
+            parts.append(f"三径={lr:.0f}×{ap:.0f}×{si:.0f}mm")
+    if not parts:
+        return ""
+    return "【临床参数】" + " | ".join(parts)
 
 
 # ======================== 影像特征 → 差异化诊断结论 ========================
@@ -395,30 +426,58 @@ def build_training_data(
                     pass
 
         structured = parse_trus_report(trus_report_text)
+        volume = _compute_volume(structured.get("dimensions", {}))
+        clinical_prefix = _build_clinical_prefix(psa, structured.get("dimensions", {}), volume)
 
         patient_id = str(row.get(EXCEL_COLUMNS["影像号"], ""))
 
         for img_path in sorted(images, key=lambda p: p.stem):
             stats["total_images"] += 1
 
+            img_rel_global = str(img_path.relative_to(PROCESSED_DIR))
+
+            # CLOVER B': 生成 Multi-Crop 局部视图 (作为数据增强备选)
+            crop_rel = get_crop_rel_path(img_rel_global)
+            crop_path = IMAGE_DIR / Path(crop_rel).name
+            if not crop_path.exists():
+                generate_local_crop(
+                    img_path, IMAGE_DIR,
+                    crop_ratio=CLOVER_CONFIG["local_crop_ratio"],
+                    crop_size=CLOVER_CONFIG["local_crop_size"],
+                )
+
             prompts = _pick_prompts(len(images), samples_per_image=5)
             report_variants = _augment_report_text(trus_report_text, pathology_info, psa)
 
+            # CLOVER A'': 结构化临床前缀 → 嵌入 system prompt (不影响标签掩码)
+            if clinical_prefix:
+                system_content = f"{SYSTEM_PROMPT}\n\n{clinical_prefix}"
+            else:
+                system_content = SYSTEM_PROMPT
+
             for pi, prompt in enumerate(prompts):
-                # 每个prompt配不同的report变体
                 variant = report_variants[pi % len(report_variants)]
+
+                # 50%概率使用局部裁剪视图 (数据增强，防过拟合)
+                use_crop = (crop_path.exists() and (pi % 2 == 0))
+                img_list = [crop_rel] if use_crop else [img_rel_global]
+
+                # 单 <image> 格式 — 与原始工作版本一致，确保标签掩码正确
+                user_content = f"<image>\n{prompt}"
+
                 sample = {
                     "id": f"{name}_{img_path.stem}_p{pi}",
-                    "images": [str(img_path.relative_to(PROCESSED_DIR))],
+                    "images": img_list,
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"<image>{prompt}"},
+                        {"role": "system", "content": system_content},
+                        {"role": "user", "content": user_content},
                         {"role": "assistant", "content": variant},
                     ],
                     "metadata": {
                         "patient_name": name,
                         "patient_id": patient_id,
                         "psa": psa,
+                        "volume": volume,
                         "has_cancer": pathology_info.get("has_cancer"),
                         "gleason_score": pathology_info.get("gleason_score"),
                         "isup_grade": pathology_info.get("isup_grade"),
